@@ -23,14 +23,101 @@ import matplotlib.pyplot as plt
 
 import time
 
-example_2d = 0
-plot_on = 0
+example_2d = 1
+plot_on = 1
 
 elapsed_cg = []
 elapsed_fdm = []
 niters_cg = []
 niters_fdm = []
 orders = []
+
+#    mesh = load_mesh("box001.msh")
+#    mesh.find_physical_coordinates(N)
+#    mesh.calc_geometric_factors()
+#    mesh.establish_global_numbering()
+#    mesh.setup_mask()
+#
+#    G = mesh.get_geom()
+#    J = mesh.get_jaco()
+#    B = mesh.get_mass()
+
+def geometric_factors(X,Y,Z,n):
+    from sempy.mass import reference_mass_matrix_3d, reference_mass_matrix_2d
+    xr, xs, xt = gradient(X, n)
+    yr, ys, yt = gradient(Y, n)
+    zr, zs, zt = gradient(Z, n)
+
+    J = (
+        xr * (ys * zt - yt * zs)
+        - yr * (xs * zt - xt * zs)
+        + zr * (xs * yt - ys * xt)
+    )
+
+    rx = (ys * zt - yt * zs) / J
+    sx = (yt * zr - yr * zt) / J
+    tx = (yr * zs - ys * zr) / J
+
+    ry = -(zt * xs - zs * xt) / J
+    sy = -(zr * xt - zt * xr) / J
+    ty = -(zs * xr - zr * xs) / J
+
+    rz = (xs * yt - xt * ys) / J
+    sz = -(xr * yt - xt * yr) / J
+    tz = (xr * ys - xs * yr) / J
+
+    g11 = rx * rx + ry * ry + rz * rz
+    g12 = rx * sx + ry * sy + rz * sz
+    g13 = rx * tx + ry * ty + rz * tz
+    g22 = sx * sx + sy * sy + sz * sz
+    g23 = sx * tx + sy * ty + sz * tz
+    g33 = tx * tx + ty * ty + tz * tz
+
+    B = reference_mass_matrix_3d(n - 1)
+
+    g = np.zeros((3, 3, g11.size))
+    g[0, 0, :] = g11 * B * J
+    g[0, 1, :] = g12 * B * J
+    g[0, 2, :] = g13 * B * J
+    g[1, 0, :] = g12 * B * J
+    g[1, 1, :] = g22 * B * J
+    g[1, 2, :] = g23 * B * J
+    g[2, 0, :] = g13 * B * J
+    g[2, 1, :] = g23 * B * J
+    g[2, 2, :] = g33 * B * J
+    g = np.array(g)
+    J = np.array(J)
+    B = np.array(B)
+    return g,J,B
+def geometric_factors_2d(X,Y,n):
+    from sempy.mass import reference_mass_matrix_3d, reference_mass_matrix_2d
+    Xr, xs = gradient_2d(X, n)
+    yr, ys = gradient_2d(Y, n)
+
+    J = Xr * ys - yr * xs
+
+    rx = ys / J
+    sx = -yr / J
+
+    ry = -xs / J
+    sy = Xr / J
+
+    g11 = rx * rx + ry * ry
+    g12 = rx * sx + ry * sy
+    g22 = sx * sx + sy * sy
+
+    B = reference_mass_matrix_2d(n - 1)
+
+    g = np.zeros((2, 2, g11.size))
+    g[0, 0, :] = g11 * B * J
+    g[0, 1, :] = g12 * B * J
+    g[1, 0, :] = g12 * B * J
+    g[1, 1, :] = g22 * B * J
+    g = np.array(g)
+    J = np.array(J)
+    B = np.array(B)
+    return g,J,B
+
 
 for N in range(2, 10):
     n = N + 1
@@ -51,6 +138,7 @@ for N in range(2, 10):
         Ah = 0.5 * (Ah + Ah.T)
 
         I = np.identity(n, dtype=np.float64)
+        Rx = I
         Ry = I[1:, :]
 
         Ax = Rx @ Ah @ Rx.T
@@ -223,9 +311,14 @@ for N in range(2, 10):
 
     if example_2d:
         x_cg, niter_cg = cg(Ax_2d, b, tol, maxit, verbose)
+        tt = time.process_time() - t
+        elapsed_cg.append(tt)
         x_mass, niter_mass = pcg(Ax_2d, precon_mass, b, tol, maxit, verbose)
         x_jacobi, niter_jacobi = pcg(Ax_2d, precon_jacobi_2d, b, tol, maxit, verbose)
+        t = time.process_time()
         x_fdm, niter_fdm = pcg(Ax_2d, precon_fdm_2d, b, tol, maxit, verbose)
+        tt = time.process_time() - t
+        elapsed_fdm.append(tt)
     else:
         x_cg, niter_cg = cg(Ax, b, tol, maxit, verbose)
         tt = time.process_time() - t
@@ -240,7 +333,6 @@ for N in range(2, 10):
     niters_fdm.append(niter_fdm)
     niters_cg.append(niter_cg)
     orders.append(N)
-
 
 plt.figure()
 plt.plot(orders, elapsed_cg, "-o")
@@ -278,11 +370,11 @@ plt.xlabel("N - order", fontsize=16)
 plt.legend(loc=0)
 plt.savefig("niter_fdm_cg.pdf", bbox_inches="tight")
 
-# if plot_on:
-#    if example_2d:
-#      print("N/A")
-#    else:
-#        mlab.figure()
-#        mlab.points3d(X,Y,Z,(x_cg-x_fdm).reshape((n,n,n)),scale_mode="none",scale_factor=0.1)
-#        mlab.axes()
-#        mlab.show()
+if plot_on:
+   if example_2d:
+     print("N/A")
+   else:
+       mlab.figure()
+       mlab.points3d(X,Y,Z,(x_cg-x_fdm).reshape((n,n,n)),scale_mode="none",scale_factor=0.1)
+       mlab.axes()
+       mlab.show()
