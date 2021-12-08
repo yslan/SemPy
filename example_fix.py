@@ -373,7 +373,6 @@ plt.savefig("niter_fdm_cg.pdf", bbox_inches="tight")
 if plot_on:
    if example_2d:
      print("N/A")
-     plt.show()
    else:
        mlab.figure()
        mlab.points3d(X,Y,Z,(x_cg-x_fdm).reshape((n,n,n)),scale_mode="none",scale_factor=0.1)
