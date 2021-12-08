@@ -13,6 +13,11 @@ https://github.com/SealUofI/SemPy
    - D-N BCs, E=1, non-deformed
    - cg, pcg (mass, jacobi, fdm)
 
+- `ref2d_v2.py`: for multigrid
+   - add chebyshev smooth
+   - vcycle (TODO)
+
+
 ### dev notes:
 
 

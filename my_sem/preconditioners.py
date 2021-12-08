@@ -1,5 +1,7 @@
 import numpy as np
 import scipy.linalg as sla
+import scipy.sparse.linalg as spla
+from my_sem.linear_solvers import arnoldi_iteration
 
 # Non-multigrid options
 
@@ -19,6 +21,11 @@ __SRx = None
 __SRy = None
 __Rmask = None
 
+__lmin = None
+__lmax = None
+__k_cheb = None
+__Ax_cheb = None
+__Sx_cheb = None
 
 # TODO: put assert functions here so pcg can check (once) before calling it
 
@@ -86,3 +93,59 @@ def precon_fdm_2d(U):
     U = __Rmask*U
     U = __SRy @ ( __dinv*(__SRy.T @ U @ __SRx) ) @ __SRx.T
     return __Rmask*U
+
+
+def precon_chebyshev_setup(funAx, fun_smoother, shape, k, lmin=0.1, lmax=1.2):
+    global __lmin, __lmax, __k_cheb, __Ax_cheb, __Sx_cheb
+
+    # Estimate the maximum eigenvalue of A via arnoldi(10)
+    np.random.seed(11) # for reproducible
+    b = np.random.random_sample(shape)
+    Q,H = arnoldi_iteration(funAx, b, 10)
+
+    l_est,_ = spla.eigs(H[:-1,:], k=1, which='LM') # 10 by 10 matrix
+    l_est = l_est.real
+
+    # debug: build full matrix and find max eigenvalues (expansive)
+#    n, m = X.shape
+#    AA = np.zeros((m*n,m*n))
+#    for j in range(m*n):
+#      for i in range(n*n):
+#        tmpi = np.zeros((m*n))
+#        tmpj = np.zeros((m*n))
+#        tmpi[i]=1
+#        tmpj[j]=1
+#        AA[j,i] = np.sum(tmpi*Ax_2d(tmpj.reshape((n,m))).reshape((m*n,)))
+#
+#    l_est2,_ = spla.eigs(AA, k=1, which='LM')
+#    l_est2 =  l_est2.real
+#    print(X.shape,l_est,l_est2)
+
+    __lmin = lmin*l_est
+    __lmax = lmax*l_est
+    __k_cheb = k
+    __Ax_cheb = funAx
+    __Sx_cheb = fun_smoother
+    return lmin,lmax
+
+
+def precon_chebyshev(r):
+    
+    theta = 0.5*(__lmax + __lmin)
+    delta = 0.5*(__lmax - __lmin)
+    sigma = theta / delta
+    rho = 1.0 / sigma
+
+    r = __Sx_cheb(r)
+    x = 0*r
+    d = 1/theta * r
+    for k in range(__k_cheb):
+        rho_prev = rho  
+
+        x = x + d
+        r = r - __Sx_cheb(__Ax_cheb(d))
+        rho = 1.0 / (2.0*sigma - rho)
+        d = rho*rho_prev * d + 2.0*rho / sigma * r
+
+    r = x + d 
+    return r
