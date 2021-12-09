@@ -2,6 +2,7 @@ import numpy as np
 import numpy.linalg as nla
 import scipy.linalg as sla
 import scipy.sparse.linalg as spla
+from numpy import multiply as mul
 
 from my_sem.gen_semhat import semhat
 from my_sem.gen_geom import geometric_factors_2d
@@ -54,7 +55,7 @@ ifsave = 0
 # Exact solution
 def fun_u_exact(x,y): 
     a=np.pi/2;
-    u = np.exp(a * y) * np.sin(a * x) # du/dx(x=1) = 0
+    u = mul( np.exp(a * y), np.sin(a * x)) # du/dx(x=1) = 0
     return np.array(u)
 
 # Boundary condition 
@@ -62,7 +63,7 @@ def set_mask2d(N): # TODO: add input to control dffernet BC
     I = np.identity(N+1, dtype=np.float64)
     Rx = I[1:, :]   # X: Dirichlet - homogeneuous Neumann
     Ry = I[1:-1, :] # Y: Dirichlet - Dirichlet
-    Rmask = np.dot( Ry.T@Ry, np.dot(np.ones((n,n)), (Rx.T@Rx).T) )
+    Rmask = (Ry.T@Ry) @ np.ones((n,n)) @ ((Rx.T@Rx).T)
     return Rx,Ry,Rmask
 
 
@@ -72,7 +73,8 @@ results['cg']   = np.empty((0,4)) # N, niter, err, time
 results['jac']  = np.empty((0,4)) # N, niter, err, time
 results['mass'] = np.empty((0,4)) # N, niter, err, time
 results['fdm']  = np.empty((0,4)) # N, niter, err, time
-results['cheb'] = np.empty((0,4)) # N, niter, err, time
+results['cheb1']= np.empty((0,4)) # N, niter, err, time
+#results['cheb2']= np.empty((0,4)) # N, niter, err, time
 
 for N in range(3, 23):
     n = N + 1; nn = n * n
@@ -89,25 +91,25 @@ for N in range(3, 23):
 
     def Ax_2d(U): 
 
-        Ux = np.dot(U, Dh.T)
-        Uy = np.dot(Dh, U)
+        Ux = U @ Dh.T
+        Uy = Dh @ U
     
-        Wx = G[0, 0, :, :] * Ux + G[0, 1, :, :] * Uy
-        Wy = G[1, 0, :, :] * Ux + G[1, 1, :, :] * Uy
+        Wx = mul(G[0, 0, :, :],Ux) + mul(G[0, 1, :, :],Uy)
+        Wy = mul(G[1, 0, :, :],Ux) + mul(G[1, 1, :, :],Uy)
    
-        W = np.dot(Wx, Dh) + np.dot(Dh.T, Wy)
+        W = Wx @ Dh + Dh.T @ Wy
 
-        return Rmask * W
+        return mul(Rmask,W)
 
-    def solve_cg(funAx,tol,maxit): # also reads: X,Y,Rmask
+    def solve_cg(funAx,tol,maxit,vb=0): # also reads: X,Y,Rmask
       if maxit<0: # use DOF
         maxit = np.sum(Rmask, dtype=np.int)
 
-      Ub = (1.0-Rmask) * fun_u_exact(X,Y) # Dirichlet BC
-      b  = -Rmask * funAx(Ub)
+      Ub = mul((1.0-Rmask), fun_u_exact(X,Y)) # Dirichlet BC
+      b  = - mul(Rmask, funAx(Ub))
 
       t0 = tic()
-      U, niter = cg(funAx, b, wt=Rmask, tol=tol, maxit=maxit, verbose=0)
+      U, niter = cg(funAx, b, wt=Rmask, tol=tol, maxit=maxit, verbose=vb)
       t_elapsed = toc(t0)
 
       U     = U + Ub
@@ -116,15 +118,17 @@ for N in range(3, 23):
 
       return U, niter, err, t_elapsed
 
-    def solve_pcg(funAx,funPrecon,tol,maxit): # also reads: X,Y,Rmask
+    def solve_pcg(funAx,funPrecon,tol,maxit,vb=0): # also reads: X,Y,Rmask
       if maxit<0: # use DOF
         maxit = np.sum(Rmask, dtype=np.int) 
+      if vb==1:
+        print('maxit',maxit,tol)
 
-      Ub = (1.0-Rmask) * fun_u_exact(X,Y) # Dirichlet BC
-      b  = -Rmask * funAx(Ub)
+      Ub = mul((1.0-Rmask), fun_u_exact(X,Y)) # Dirichlet BC
+      b  = -mul(Rmask, funAx(Ub))
 
       t0 = tic()
-      U, niter = pcg(funAx, funPrecon, b, wt=Rmask, tol=tol, maxit=maxit, verbose=0)
+      U, niter = pcg(funAx, funPrecon, b, wt=Rmask, tol=tol, maxit=maxit, verbose=vb)
       t_elapsed = toc(t0)
 
       U     = U + Ub
@@ -135,7 +139,7 @@ for N in range(3, 23):
 
 
     # Setup preconditioner (store into module-wise global memory)
-    Minv = 1.0 / (B * J)
+    Minv = 1.0 / mul(B, J)
     precon_mass_setup(Minv)
 
     omega = 2.0/3.0 # relaxtion
@@ -168,19 +172,26 @@ for N in range(3, 23):
     U, niter, err, t_elapsed = solve_pcg(Ax_2d,precon_fdm_2d,tol,maxit)
     results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
 
-    tag = 'cheb'
+    tag = 'cheb1' # cheb + jac
     U, niter, err, t_elapsed = solve_pcg(Ax_2d,precon_chebyshev,tol,maxit)
     results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
 
-
+#    tag = 'cheb2' # cheb + mass lmax unbdd
+#    cheb_smoother = precon_mass 
+#    k_iter = 0
+#    precon_chebyshev_setup(Ax_2d, cheb_smoother, X.shape, k_iter, lmin=0.1, lmax=1.2)
+#    U, niter, err, t_elapsed = solve_pcg(Ax_2d,precon_chebyshev,tol,maxit,vb=1)
+#    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+#    print(niter)
 
 ## plots and saves
 ax = plt.figure().gca()
-plt.semilogy(results['cg']  [:,0], results['cg']  [:,3], "-o", label="cg")
-plt.semilogy(results['mass'][:,0], results['mass'][:,3], "-o", label="pcg(mass)")
-plt.semilogy(results['jac'] [:,0], results['jac'] [:,3], "-o", label="pcg(jacobi)")
-plt.semilogy(results['fdm'] [:,0], results['fdm'] [:,3], "-o", label="pcg(fdm)")
-plt.semilogy(results['cheb'][:,0], results['cheb'][:,3], "-o", label="pcg(cheb-jac)")
+plt.semilogy(results['cg']   [:,0], results['cg']   [:,3], "-o", label="cg")
+plt.semilogy(results['mass'] [:,0], results['mass'] [:,3], "-o", label="pcg(mass)")
+plt.semilogy(results['jac']  [:,0], results['jac']  [:,3], "-o", label="pcg(jacobi)")
+plt.semilogy(results['fdm']  [:,0], results['fdm']  [:,3], "-o", label="pcg(fdm)")
+plt.semilogy(results['cheb1'][:,0], results['cheb1'][:,3], "-o", label="pcg(cheb-jac)")
+#plt.semilogy(results['cheb2'][:,0], results['cheb2'][:,3], "-o", label="pcg(cheb-mass)")
 plt.title("tol="+str(tol), fontsize=20); plt.legend(loc=0)
 plt.xlim(1, N + 1); ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 plt.xlabel("N - order", fontsize=16); plt.ylabel("Elapsed Time (s)", fontsize=16)
@@ -188,11 +199,12 @@ if(ifsave):
     plt.savefig("elapsed_pcg.pdf", bbox_inches="tight")
 
 ax = plt.figure().gca()
-plt.semilogy(results['cg']  [:,0], results['cg']  [:,1], "-o", label="cg")
-plt.semilogy(results['mass'][:,0], results['mass'][:,1], "-o", label="pcg(mass)")
-plt.semilogy(results['jac'] [:,0], results['jac'] [:,1], "-o", label="pcg(jacobi)")
-plt.semilogy(results['fdm'] [:,0], results['fdm'] [:,1], "-o", label="pcg(fdm)")
-plt.semilogy(results['cheb'][:,0], results['cheb'][:,1], "-o", label="pcg(cheb-jac)")
+plt.semilogy(results['cg']   [:,0], results['cg']   [:,1], "-o", label="cg")
+plt.semilogy(results['mass'] [:,0], results['mass'] [:,1], "-o", label="pcg(mass)")
+plt.semilogy(results['jac']  [:,0], results['jac']  [:,1], "-o", label="pcg(jacobi)")
+plt.semilogy(results['fdm']  [:,0], results['fdm']  [:,1], "-o", label="pcg(fdm)")
+plt.semilogy(results['cheb1'][:,0], results['cheb1'][:,1], "-o", label="pcg(cheb-jac)")
+#plt.semilogy(results['cheb2'][:,0], results['cheb2'][:,1], "-o", label="pcg(cheb-mass)")
 plt.title("tol="+str(tol), fontsize=20); plt.legend(loc=0)
 plt.xlim(2, N + 1); ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 plt.xlabel("N - order", fontsize=16); plt.ylabel("# iterations", fontsize=16)
@@ -200,11 +212,12 @@ if(ifsave):
     plt.savefig("niter_pcg.pdf", bbox_inches="tight")
 
 ax = plt.figure().gca()
-plt.semilogy(results['cg']  [:,0], results['cg']  [:,2], "-o", label="cg")
-plt.semilogy(results['mass'][:,0], results['mass'][:,2], "-o", label="pcg(mass)")
-plt.semilogy(results['jac'] [:,0], results['jac'] [:,2], "-o", label="pcg(jacobi)")
-plt.semilogy(results['fdm'] [:,0], results['fdm'] [:,2], "-o", label="pcg(fdm)")
-plt.semilogy(results['cheb'][:,0], results['cheb'][:,2], "-o", label="pcg(cheb-jac)")
+plt.semilogy(results['cg']   [:,0], results['cg']   [:,2], "-o", label="cg")
+plt.semilogy(results['mass'] [:,0], results['mass'] [:,2], "-o", label="pcg(mass)")
+plt.semilogy(results['jac']  [:,0], results['jac']  [:,2], "-o", label="pcg(jacobi)")
+plt.semilogy(results['fdm']  [:,0], results['fdm']  [:,2], "-o", label="pcg(fdm)")
+plt.semilogy(results['cheb1'][:,0], results['cheb1'][:,2], "-o", label="pcg(cheb-jac)")
+#plt.semilogy(results['cheb2'][:,0], results['cheb2'][:,2], "-o", label="pcg(cheb-mass)")
 plt.title("tol="+str(tol), fontsize=20); plt.legend(loc=0)
 plt.xlim(2, N + 1); ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 plt.xlabel("N - order", fontsize=16); plt.ylabel("max. abs. error", fontsize=16)

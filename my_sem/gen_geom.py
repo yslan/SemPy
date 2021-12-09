@@ -1,5 +1,6 @@
 import numpy as np
 from my_sem.gen_semhat import reference_derivative_matrix, gauss_lobatto # TODO
+from numpy import multiply as mul
 
 '''
     Generate the geometric factors, jacobian, and mass
@@ -16,19 +17,19 @@ def geometric_factors_2d_arr(xx,yy,n):
     Dh = reference_derivative_matrix(N)
 
     X = xx.reshape(n, n)
-    Xr = np.dot(X, Dh.T)
-    Xs = np.dot(Dh, X)
+    Xr = X @ Dh.T
+    Xs = Dh @ X
 
     Y = yy.reshape(n, n)
-    Yr = np.dot(Y, Dh.T)
-    Ys = np.dot(Dh, Y)
+    Yr = Y @ Dh.T
+    Ys = Dh @ Y
 
     xxr = Xr.reshape((nn,))
     xxs = Xs.reshape((nn,))
     yyr = Yr.reshape((nn,))
     yys = Ys.reshape((nn,))
 
-    J = xxr * yys - yyr * xxs
+    J = mul(xxr,yys) - mul(yyr,xxs)
 
     rxx = yys / J
     sxx = -yyr / J
@@ -36,9 +37,9 @@ def geometric_factors_2d_arr(xx,yy,n):
     ryy = -xxs / J
     syy = xxr / J
 
-    g11 = rxx * rxx + ryy * ryy
-    g12 = rxx * sxx + ryy * syy
-    g22 = sxx * sxx + syy * syy
+    g11 = mul(rxx,rxx) + mul(ryy,ryy)
+    g12 = mul(rxx,sxx) + mul(ryy,syy)
+    g22 = mul(sxx,sxx) + mul(syy,syy)
 
     z, w = gauss_lobatto(N) 
     w = w.reshape((n,1))
@@ -46,10 +47,10 @@ def geometric_factors_2d_arr(xx,yy,n):
     Bhh = Bxy.reshape((nn,))
 
     G = np.zeros((2, 2, g11.size))
-    G[0, 0, :] = g11 * Bhh * J
-    G[0, 1, :] = g12 * Bhh * J
-    G[1, 0, :] = g12 * Bhh * J
-    G[1, 1, :] = g22 * Bhh * J
+    G[0, 0, :] = mul(g11, mul(Bhh,J) )  
+    G[0, 1, :] = mul(g12, mul(Bhh,J) )
+    G[1, 0, :] = mul(g12, mul(Bhh,J) )
+    G[1, 1, :] = mul(g22, mul(Bhh,J) )
     G  = np.array(G)
     J  = np.array(J)
     Bhh= np.array(Bhh)
@@ -63,13 +64,13 @@ def geometric_factors_2d(X,Y,w,Dh,n):
     N = n-1
     nn = n*n
 
-    Xr = np.dot(X, Dh.T)
-    Xs = np.dot(Dh, X)
+    Xr = X @ Dh.T
+    Xs = Dh @ X
 
-    Yr = np.dot(Y, Dh.T)
-    Ys = np.dot(Dh, Y)
+    Yr = Y @ Dh.T
+    Ys = Dh @ Y
 
-    J = Xr * Ys - Yr * Xs
+    J = mul(Xr,Ys) - mul(Yr,Xs)
 
     rX = Ys / J
     sX = -Yr / J
@@ -77,18 +78,18 @@ def geometric_factors_2d(X,Y,w,Dh,n):
     rY = -Xs / J
     sY = Xr / J
 
-    g11 = rX * rX + rY * rY
-    g12 = rX * sX + rY * sY
-    g22 = sX * sX + sY * sY
+    g11 = mul(rX,rX) + mul(rY,rY)
+    g12 = mul(rX,sX) + mul(rY,sY)
+    g22 = mul(sX,sX) + mul(sY,sY)
 
     w = w.reshape((n,1))
     Bxy= w @ w.T
 
     G = np.zeros((2, 2)+g11.shape)
-    G[0, 0, :, :] = g11 * Bxy * J
-    G[0, 1, :, :] = g12 * Bxy * J
-    G[1, 0, :, :] = g12 * Bxy * J
-    G[1, 1, :, :] = g22 * Bxy * J
+    G[0, 0, :, :] = mul(g11, mul(Bxy,J) ) 
+    G[0, 1, :, :] = mul(g12, mul(Bxy,J) )
+    G[1, 0, :, :] = mul(g12, mul(Bxy,J) )
+    G[1, 1, :, :] = mul(g22, mul(Bxy,J) )
     G  = np.array(G)
     J  = np.array(J)
     Bxy= np.array(Bxy)

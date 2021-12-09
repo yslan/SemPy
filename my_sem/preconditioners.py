@@ -2,6 +2,7 @@ import numpy as np
 import scipy.linalg as sla
 import scipy.sparse.linalg as spla
 from my_sem.linear_solvers import arnoldi_iteration
+from numpy import multiply as mul
 
 # Non-multigrid options
 
@@ -35,7 +36,7 @@ def precon_mass_setup(Minv):
     __Minv = Minv
 
 def precon_mass(r):
-    return __Minv * r
+    return mul(__Minv, r)
 
 
 def precon_jac_setup(funAx, x, omega): # fetch diaginal of matrix A
@@ -47,14 +48,14 @@ def precon_jac_setup(funAx, x, omega): # fetch diaginal of matrix A
       for i in range(n):
         tmp = np.zeros((m,n))
         tmp[j,i]=1
-        DD[j,i] = np.sum(tmp*funAx(tmp))
+        DD[j,i] = np.sum(mul(tmp,funAx(tmp)))
     __Dinv = DD
     __Dinv[__Dinv!=0] = 1.0 / __Dinv[__Dinv!=0]
     __omega = omega
     return __Dinv
 
 def precon_jac(r):
-    return __omega * __Dinv * r
+    return __omega * mul(__Dinv, r)
 
 
 def precon_fdm_2d_setup(Bh, Dh, Rx, Ry, Rmask): # FIXME: use helmholtz form: a*A + b*B
@@ -90,9 +91,9 @@ def precon_fdm_2d_setup(Bh, Dh, Rx, Ry, Rmask): # FIXME: use helmholtz form: a*A
 
 
 def precon_fdm_2d(U):
-    U = __Rmask*U
-    U = __SRy @ ( __dinv*(__SRy.T @ U @ __SRx) ) @ __SRx.T
-    return __Rmask*U
+    U = mul(__Rmask, U)
+    U = __SRy @ ( mul(__dinv,(__SRy.T @ U @ __SRx)) ) @ __SRx.T
+    return mul(__Rmask, U)
 
 
 def precon_chebyshev_setup(funAx, fun_smoother, shape, k, lmin=0.1, lmax=1.2):

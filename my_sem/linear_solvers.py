@@ -13,10 +13,11 @@
       verbose
 '''
 import numpy as np
+from numpy import multiply as mul
 
 
 def my_dot(u,v,wt):
-    return np.sum(u*v*wt)
+    return np.sum(mul(mul(u,v),wt))
 
 def cg(A, b, x0=None, wt=None, tol=1e-12, maxit=100, verbose=0):
     if wt is None:
@@ -81,16 +82,17 @@ def pcg(A, Minv, b, x0=None, wt=None, tol=1e-8, maxit=100, verbose=0):
       r = A(x)
       rdotr = my_dot(r, r, wt)
 
-    if verbose:
-        print("Initial rnorm={}".format(rdotr))
-
     TOL = max(tol * tol * rdotr, tol * tol)
-
 
     niter = 0
 
     z = Minv(r)
     rdotz = my_dot(r, z, wt)
+
+    if verbose:
+        print("Initial rnorm={}".format(rdotr),rdotz,TOL)
+        if(rdotz<0): # cheb-mass fails
+           quit()
 
     p = z
     while niter < maxit and rdotz > TOL:
@@ -146,8 +148,8 @@ def arnoldi_iteration(funA, b, n: int): # copy from wiki
         v = funA(Q[:,k-1].reshape(mm)).reshape((m,))
 
         for j in range(k):  # Subtract the projections on previous vectors
-            h[j,k-1] = np.sum(Q[:,j]*v)
-            v = v - h[j,k-1] * Q[:,j]
+            h[j,k-1] = np.sum(mul(Q[:,j],v))
+            v = v - mul(h[j,k-1],Q[:,j])
         h[k,k-1] = np.linalg.norm(v,2)
         if h[k,k-1] > eps:  # Add the produced vector to the list, unless
             Q[:,k] = v/h[k,k-1]
