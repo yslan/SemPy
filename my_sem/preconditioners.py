@@ -127,7 +127,8 @@ def precon_chebyshev_setup(funAx, fun_smoother, shape, k, lmin=0.1, lmax=1.2):
     __k_cheb = k
     __Ax_cheb = funAx
     __Sx_cheb = fun_smoother
-    return lmin,lmax
+    
+    return __lmin,__lmax
 
 
 def precon_chebyshev(r):
