@@ -204,15 +204,20 @@ for N in range(3, 23):
         x = x + d
         return x
 
-    def solve_twolevels(funAx,funRelax,funRelaxSetup,tol,maxit,crsmode=1):
+    def solve_twolevels(funAx,funRelax,funRelaxSetup,tol,maxit,crsmode=1,cmode=0):
         if maxit<0: # use DOF
             maxit = np.sum(Rmask, dtype=np.int)
+        cmode = np.array(cmode)
         msmth = 2
 
         Nf = N
-        Nc = max(np.int(np.ceil(Nf/2.0)),2)
-        Nc = max(np.int(np.ceil(Nf-2)),2) # N=2 is the minimum due to the Dirichlet BC, FIXME
-#        print(Nf,Nc)
+        if cmode.size==2:
+            Nc = no.int(cmode[1])
+        elif cmode==0:
+            Nc = max(np.int(np.ceil(Nf/2.0)),2)
+        elif cmode==1:
+            Nc = max(np.int(np.ceil(Nf-2)),2)
+        print(Nf,Nc)
         vb = 0
 
         Ub = mul((1.0-Rmask), fun_u_exact(X,Y)) # Dirichlet BC

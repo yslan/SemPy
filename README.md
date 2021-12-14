@@ -21,6 +21,15 @@ The main driver are listed below:
 
 ### modules and functions
 
+- `sempy/`
+
+   Currently, we only call the following function to genrate the mesh.
+   ```
+      from sempy.meshes.box import reference_2d 
+   ```
+   Potentially, we should be able to read any gmsh (`.msh`) via the sempy reader.
+
+
 - `my_sem/`
 
    - `gen_geom.py`    
