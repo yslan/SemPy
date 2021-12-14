@@ -25,7 +25,6 @@ from sempy.meshes.box import reference_2d
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
-
 # 2D Poisson solver:  -nabla^2 u = 0
 # Available BCs:
 #    inhomogenuous Dirichlet 
@@ -62,8 +61,8 @@ def fun_u_exact(x,y):
 # Boundary condition 
 def set_mask2d(N): # TODO: add input to control dffernet BC
     I = np.identity(N+1, dtype=np.float64)
-    Rx = I[1:, :]   # X: Dirichlet - homogeneuous Neumann
-#   Rx = I[1:-1, :]   # X: Dirichlet - homogeneuous Neumann
+#    Rx = I[1:, :]   # X: Dirichlet - homogeneuous Neumann
+    Rx = I[1:-1, :] # X: Dirichlet - Dirichlet
     Ry = I[1:-1, :] # Y: Dirichlet - Dirichlet
     Rmask = (Ry.T@Ry) @ np.ones((N+1,N+1)) @ ((Rx.T@Rx).T)
     return Rx,Ry,Rmask
@@ -77,14 +76,14 @@ results['mass']   = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
 results['fdm']    = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
 results['cheb1']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
 #results['cheb2'] = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
-results['mg2j0']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
 results['mg2j1']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
-results['mg2c0']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
+results['mg2j2']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
 results['mg2c1']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
-results['mg3j0']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
+results['mg2c2']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
 results['mg3j1']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
-results['mg3c0']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
+results['mg3j2']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
 results['mg3c1']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
+results['mg3c2']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
 
 for N in range(3, 23):
     n = N + 1; nn = n * n
@@ -205,7 +204,7 @@ for N in range(3, 23):
         x = x + d
         return x
 
-    def solve_twolevels(funAx,funRelax,funRelaxSetup,tol,maxit,crsmode=0):
+    def solve_twolevels(funAx,funRelax,funRelaxSetup,tol,maxit,crsmode=1):
         if maxit<0: # use DOF
             maxit = np.sum(Rmask, dtype=np.int)
         msmth = 2
@@ -233,7 +232,7 @@ for N in range(3, 23):
         return U, niter, err, t_solve, t_elapsed
 
 
-    def solve_threelevels(funAx,funRelax,funRelaxSetup,tol,maxit,crsmode=0,cmode=0):
+    def solve_threelevels(funAx,funRelax,funRelaxSetup,tol,maxit,crsmode=1,cmode=0):
         if maxit<0: # use DOF
             maxit = np.sum(Rmask, dtype=np.int)
         cmode = np.array(cmode)
@@ -249,6 +248,7 @@ for N in range(3, 23):
         elif cmode==1:
             Nc1 = max(np.int(np.ceil(Nf-2)),2)
             Nc2 = max(np.int(np.ceil(Nc1-2)),2)
+#        Nc2=2 # coarest grid
         print(Nf,Nc1,Nc2)
         vb = 0
 
@@ -315,44 +315,44 @@ for N in range(3, 23):
 #    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
 #    print(niter)
 
-    tag = 'mg2j0' # 2-lv jac, crsmode=0
+    tag = 'mg2j1' # 2-lv jac, crsmode=0
     U, niter, err, t_solve, t_elapsed = solve_twolevels(Ax_2d,relax_jacobi,relax_jacobi_setup
-                                              ,tol,maxit,crsmode=0)
+                                              ,tol,maxit,crsmode=1)
     results[tag] = np.append(results[tag], [[N, niter, err, t_solve, t_elapsed]], axis=0)
 
-    tag = 'mg2j1' # 2-lv jac, crsmode=1
+    tag = 'mg2j2' # 2-lv jac, crsmode=1
     U, niter, err, tsolve, t_elapsed = solve_twolevels(Ax_2d,relax_jacobi,relax_jacobi_setup
-                                              ,tol,maxit,crsmode=1)
+                                              ,tol,maxit,crsmode=2)
     results[tag] = np.append(results[tag], [[N, niter, err, t_solve, t_elapsed]], axis=0)
 
-    tag = 'mg2c0' # 2-lv jac+cheb, crsmode=0
-    U, niter, err, tsolve, t_elapsed = solve_twolevels(Ax_2d,relax_cheb_jacobi,relax_cheb_jacobi_setup
-                                              ,tol,maxit,crsmode=0)
-    results[tag] = np.append(results[tag], [[N, niter, err, t_solve, t_elapsed]], axis=0)
-
-    tag = 'mg2c1' # 2-lv jac+cheb, crsmode=1
+    tag = 'mg2c1' # 2-lv jac+cheb, crsmode=0
     U, niter, err, tsolve, t_elapsed = solve_twolevels(Ax_2d,relax_cheb_jacobi,relax_cheb_jacobi_setup
                                               ,tol,maxit,crsmode=1)
     results[tag] = np.append(results[tag], [[N, niter, err, t_solve, t_elapsed]], axis=0)
 
-    tag = 'mg3j0' # 2-lv jac, crsmode=0
-    U, niter, err, tsolve, t_elapsed = solve_threelevels(Ax_2d,relax_jacobi,relax_jacobi_setup
-                                                ,tol,maxit,crsmode=0)
+    tag = 'mg2c2' # 2-lv jac+cheb, crsmode=1
+    U, niter, err, tsolve, t_elapsed = solve_twolevels(Ax_2d,relax_cheb_jacobi,relax_cheb_jacobi_setup
+                                              ,tol,maxit,crsmode=2)
     results[tag] = np.append(results[tag], [[N, niter, err, t_solve, t_elapsed]], axis=0)
 
-    tag = 'mg3j1' # 3-lv jac, crsmode=1
+    tag = 'mg3j1' # 2-lv jac, crsmode=0
     U, niter, err, tsolve, t_elapsed = solve_threelevels(Ax_2d,relax_jacobi,relax_jacobi_setup
                                                 ,tol,maxit,crsmode=1)
     results[tag] = np.append(results[tag], [[N, niter, err, t_solve, t_elapsed]], axis=0)
 
-    tag = 'mg3j0' # 2-lv jac, crsmode=0
+    tag = 'mg3j2' # 3-lv jac, crsmode=1
     U, niter, err, tsolve, t_elapsed = solve_threelevels(Ax_2d,relax_jacobi,relax_jacobi_setup
-                                                ,tol,maxit,crsmode=0)
+                                                ,tol,maxit,crsmode=2)
     results[tag] = np.append(results[tag], [[N, niter, err, t_solve, t_elapsed]], axis=0)
 
-    tag = 'mg3j1' # 3-lv jac, crsmode=1
+    tag = 'mg3j1' # 2-lv jac, crsmode=0
     U, niter, err, tsolve, t_elapsed = solve_threelevels(Ax_2d,relax_jacobi,relax_jacobi_setup
                                                 ,tol,maxit,crsmode=1)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_solve, t_elapsed]], axis=0)
+
+    tag = 'mg3j2' # 3-lv jac, crsmode=1
+    U, niter, err, tsolve, t_elapsed = solve_threelevels(Ax_2d,relax_jacobi,relax_jacobi_setup
+                                                ,tol,maxit,crsmode=2)
     results[tag] = np.append(results[tag], [[N, niter, err, t_solve, t_elapsed]], axis=0)
 
 ## plots and saves
@@ -364,14 +364,14 @@ def plot_aux(results,idx,stry,ifsave,strf):
     plt.semilogy(results['fdm']  [:,0], results['fdm']  [:,idx],"-o", label="pcg(fdm)")
     plt.semilogy(results['cheb1'][:,0], results['cheb1'][:,idx],"-o", label="pcg(cheb-jac)")
 #   plt.semilogy(results['cheb2'][:,0], results['cheb2'][:,idx],"-o", label="pcg(cheb-mass)")
-    plt.semilogy(results['mg2j0'][:,0], results['mg2j0'][:,idx],"-o", label="2-lv(jac0)")
     plt.semilogy(results['mg2j1'][:,0], results['mg2j1'][:,idx],"-o", label="2-lv(jac1)")
-    plt.semilogy(results['mg2c0'][:,0], results['mg2c0'][:,idx],"-o", label="2-lv(cheb-jac0)")
+    plt.semilogy(results['mg2j2'][:,0], results['mg2j2'][:,idx],"-o", label="2-lv(jac2)")
     plt.semilogy(results['mg2c1'][:,0], results['mg2c1'][:,idx],"-o", label="2-lv(cheb-jac1)")
-    plt.semilogy(results['mg3j0'][:,0], results['mg3j0'][:,idx],"-o", label="3-lv(jac0)")
+    plt.semilogy(results['mg2c2'][:,0], results['mg2c2'][:,idx],"-o", label="2-lv(cheb-jac2)")
     plt.semilogy(results['mg3j1'][:,0], results['mg3j1'][:,idx],"-o", label="3-lv(jac1)")
-    plt.semilogy(results['mg3c0'][:,0], results['mg3c0'][:,idx],"-o", label="3-lv(cheb-jac0)")
+    plt.semilogy(results['mg3j2'][:,0], results['mg3j2'][:,idx],"-o", label="3-lv(jac2)")
     plt.semilogy(results['mg3c1'][:,0], results['mg3c1'][:,idx],"-o", label="3-lv(cheb-jac1)")
+    plt.semilogy(results['mg3c2'][:,0], results['mg3c2'][:,idx],"-o", label="3-lv(cheb-jac2)")
     plt.title("tol="+str(tol), fontsize=20); plt.legend(loc=0)
     plt.xlim(1, N + 1); ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     plt.xlabel("N - order", fontsize=16); plt.ylabel(stry, fontsize=16)

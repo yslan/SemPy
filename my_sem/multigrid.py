@@ -40,9 +40,11 @@ def gen_operators(N,X,Y):
     G, J, B = geometric_factors_2d(X, Y, w, Dh, N+1)
     return Ah, Bh, Dh, Bxy, G, J
 
-def coarse_operators_setup(Ah, Bh, Jh):  # get coarse operators
-    Ahc = Jh.T @ Ah @ Jh
-    Bhc = Jh.T @ Bh @ Jh
+def coarse_operators_setup(Ah, Bh, Jh_c2f, Jh_f2c=None):  # get coarse operators
+    if Jh_f2c is None:
+        Jh_f2c = Jh_c2f.T
+    Ahc = Jh_f2c @ Ah @ Jh_c2f
+    Bhc = Jh_f2c @ Bh @ Jh_c2f
     return Ahc, Bhc 
 
 def fdm_2d_setup(Ahc, Bhc, Rxc, Ryc, Rmaskc):  # prepare for fdm
@@ -91,26 +93,32 @@ def twolevels(funAx,b,set_mask2d,relax,relaxSetup
     Rx, Ry, Rmask = set_mask2d(Nf) # don't use function...
 
     # Generate coarse grid operators
-    Jh  = interp_setup(Nf,Nc)
+    Jh_c2f  = interp_setup(Nf,Nc) # 2D coarse to fine J @ U @ J.T
+    if crsmode<0:
+        crsmode=abs(crsmode)
+        Jh_f2c  = interp_setup(Nc,Nf)
+    else:
+        Jh_f2c = Jh_c2f.T
+
     Rxc, Ryc, Rmaskc = set_mask2d(Nc) # don't use function...
 
-    if crsmode==0: # Interp everything in Galerkin sense
-        Ahc, Bhc = coarse_operators_setup(Ah, Bh, Jh) # This gives full Bh (FIXME)
+    if crsmode==1: # Interp everything in Galerkin sense
+        Ahc, Bhc = coarse_operators_setup(Ah, Bh, Jh_c2f,Jh_f2c) # This gives full Bh (FIXME)
 
         # belows is only used when we need Ax at coarse grid
         # for box mesh + two levels, we have direct solves, no need Geometric factors
         # TODO: this is needed to coarse solve for non-box mesh
         Gc = np.zeros((2, 2, Nc+1, Nc+1)) 
-        Gc [0, 0, :, :] = Jh.T @ G[0, 0, :, :] @ Jh
-        Gc [0, 1, :, :] = Jh.T @ G[0, 1, :, :] @ Jh
-        Gc [1, 0, :, :] = Jh.T @ G[1, 0, :, :] @ Jh
-        Gc [1, 1, :, :] = Jh.T @ G[1, 1, :, :] @ Jh
-        Jc = Jh.T @ J @ Jh
+        Gc [0, 0, :, :] = Jh_f2c @ G[0, 0, :, :] @ Jh_f2c.T 
+        Gc [0, 1, :, :] = Jh_f2c @ G[0, 1, :, :] @ Jh_f2c.T
+        Gc [1, 0, :, :] = Jh_f2c @ G[1, 0, :, :] @ Jh_f2c.T
+        Gc [1, 1, :, :] = Jh_f2c @ G[1, 1, :, :] @ Jh_f2c.T
+        Jc = Jh_f2c @ J @ Jh_f2c.T
  
-    if crsmode==1: # Interp grid, gen matrix on grid
-        Jh_f2c  = interp_setup(Nc,Nf) # for box mesh, this equals reference_2d(N)
-        Xc = Jh_f2c @ X @ Jh_f2c.T # only used for setup
-        Yc = Jh_f2c @ Y @ Jh_f2c.T
+    if crsmode==2: # Interp grid, gen matrix on grid
+        Jh_f2c_tmp  = interp_setup(Nc,Nf) # for box mesh, this equals reference_2d(N)
+        Xc = Jh_f2c_tmp @ X @ Jh_f2c_tmp.T # only used for setup
+        Yc = Jh_f2c_tmp @ Y @ Jh_f2c_tmp.T
 #       Xc, Yc = reference_2d(Nc)
         Ahc, Bhc, Dhc, Bxyc, Gc, Jc = gen_operators(Nc,Xc,Yc) # This gives diag Bh
 
@@ -146,9 +154,9 @@ def twolevels(funAx,b,set_mask2d,relax,relaxSetup
         x = relax(funAx,x,b,msmth,**relaxData)    # relaxation
         r = b - funAx(x)
 
-        rc = Jh.T @ r @ Jh                               # fine to coarse
+        rc = Jh_f2c @ r @ Jh_f2c.T                       # fine to coarse
         ec = fdm_2d_solve(rc, SRxc, SRyc, dcinv, Rmaskc) # coarse solve
-        ef = Jh @ ec @ Jh.T                              # coarse to fine
+        ef = Jh_c2f @ ec @ Jh_c2f.T                      # coarse to fine
 
         x = x + ef            # update
 
@@ -172,43 +180,50 @@ def threelevels(funAx,b,set_mask2d,relax,relaxSetup
     Rx, Ry, Rmask = set_mask2d(Nf) # don't use function...
 
     # Generate coarse grid operators
-    Jh1  = interp_setup(Nf, Nc1)
+    Jh1_c2f  = interp_setup(Nf, Nc1)
     Rxc1, Ryc1, Rmaskc1 = set_mask2d(Nc1) # don't use function...
 
-    Jh2  = interp_setup(Nc1,Nc2)
+    Jh2_c2f  = interp_setup(Nc1,Nc2)
     Rxc2, Ryc2, Rmaskc2 = set_mask2d(Nc2) # don't use function...
 
-    if crsmode==0: # Interp everything in Galerkin sense
-        Ahc1, Bhc1 = coarse_operators_setup(Ah,   Bh,   Jh1) # This gives full Bh (FIXME)
-        Ahc2, Bhc2 = coarse_operators_setup(Ahc1, Bhc1, Jh2) 
+    if crsmode<0:
+        crsmode=abs(crsmode)
+        Jh1_f2c  = interp_setup(Nc1,Nf)
+        Jh2_f2c  = interp_setup(Nc2,Nc1)
+    else: # symmetric
+        Jh1_f2c = Jh1_c2f.T
+        Jh2_f2c = Jh2_c2f.T
+
+    if crsmode==1: # Interp everything in Galerkin sense
+        Ahc1, Bhc1 = coarse_operators_setup(Ah,  Bh,  Jh1_c2f,Jh1_f2c) # This full Bh (FIXME)
+        Ahc2, Bhc2 = coarse_operators_setup(Ahc1,Bhc1,Jh2_c2f,Jh2_f2c) 
         _, _, Dhc1 = semhat(Nc1)
         _, _, Dhc2 = semhat(Nc2)
 
         # belows is only used when we need Ax at coarse grid
         Gc1 = np.zeros((2, 2, Nc1+1, Nc1+1)) 
-        Gc1 [0, 0, :, :] = Jh1.T @ G[0, 0, :, :] @ Jh1
-        Gc1 [0, 1, :, :] = Jh1.T @ G[0, 1, :, :] @ Jh1
-        Gc1 [1, 0, :, :] = Jh1.T @ G[1, 0, :, :] @ Jh1
-        Gc1 [1, 1, :, :] = Jh1.T @ G[1, 1, :, :] @ Jh1
-        Jc1 = Jh1.T @ J @ Jh1
+        Gc1 [0, 0, :, :] = Jh1_f2c @ G[0, 0, :, :] @ Jh1_f2c.T
+        Gc1 [0, 1, :, :] = Jh1_f2c @ G[0, 1, :, :] @ Jh1_f2c.T
+        Gc1 [1, 0, :, :] = Jh1_f2c @ G[1, 0, :, :] @ Jh1_f2c.T
+        Gc1 [1, 1, :, :] = Jh1_f2c @ G[1, 1, :, :] @ Jh1_f2c.T
+        Jc1 = Jh1_f2c @ J @ Jh1_f2c.T
 
         Gc2 = np.zeros((2, 2, Nc2+1, Nc2+1))
-        Gc2 [0, 0, :, :] = Jh2.T @ Gc1[0, 0, :, :] @ Jh2
-        Gc2 [0, 1, :, :] = Jh2.T @ Gc1[0, 1, :, :] @ Jh2
-        Gc2 [1, 0, :, :] = Jh2.T @ Gc1[1, 0, :, :] @ Jh2
-        Gc2 [1, 1, :, :] = Jh2.T @ Gc1[1, 1, :, :] @ Jh2
-        Jc2 = Jh2.T @ Jc1 @ Jh2
+        Gc2 [0, 0, :, :] = Jh2_f2c @ Gc1[0, 0, :, :] @ Jh2_f2c.T
+        Gc2 [0, 1, :, :] = Jh2_f2c @ Gc1[0, 1, :, :] @ Jh2_f2c.T
+        Gc2 [1, 0, :, :] = Jh2_f2c @ Gc1[1, 0, :, :] @ Jh2_f2c.T
+        Gc2 [1, 1, :, :] = Jh2_f2c @ Gc1[1, 1, :, :] @ Jh2_f2c.T
+        Jc2 = Jh2_f2c @ Jc1 @ Jh2_f2c.T
  
-    if crsmode==1: # Interp grid, gen matrix on grid
-
-        Jh1_f2c  = interp_setup(Nc1,Nf) # for box mesh, this equals reference_2d(N)
-        Xc1 = Jh1_f2c @ X @ Jh1_f2c.T # only used for setup
-        Yc1 = Jh1_f2c @ Y @ Jh1_f2c.T
+    if crsmode==2: # Interp grid, gen matrix on grid
+        Jh1_f2c_tmp  = interp_setup(Nc1,Nf) # for box mesh, this equals reference_2d(N)
+        Xc1 = Jh1_f2c_tmp @ X @ Jh1_f2c_tmp.T # only used for setup
+        Yc1 = Jh1_f2c_tmp @ Y @ Jh1_f2c_tmp.T
 #       Xc1, Yc1 = reference_2d(Nc1)
 
-        Jh2_f2c  = interp_setup(Nc2,Nc1) 
-        Xc2 = Jh2_f2c @ Xc1 @ Jh2_f2c.T 
-        Yc2 = Jh2_f2c @ Yc1 @ Jh2_f2c.T
+        Jh2_f2c_tmp  = interp_setup(Nc2,Nc1) 
+        Xc2 = Jh2_f2c_tmp @ Xc1 @ Jh2_f2c_tmp.T 
+        Yc2 = Jh2_f2c_tmp @ Yc1 @ Jh2_f2c_tmp.T
 #       Xc2, Yc2 = reference_2d(Nc2)
 
         Ahc1, Bhc1, Dhc1, Bxyc1, Gc1, Jc1 = gen_operators(Nc1,Xc1,Yc1) # This gives diag Bh
@@ -256,19 +271,19 @@ def threelevels(funAx,b,set_mask2d,relax,relaxSetup
         niter = niter + 1                                     #F   #C1  #C2
 
         uf  = relax(funAx_f,uf,bf,msmth,**relaxData_f)        # relaxation
-        bc1 = Jh1.T @ (bf - funAx_f(uf)) @ Jh1                # fine to coarse
+        bc1 = Jh1_f2c @ (bf - funAx_f(uf)) @ Jh1_f2c.T        # fine to coarse
 
         uc1 = 0*bc1
         uc1 = relax(funAx_c1,uc1,bc1,msmth,**relaxData_c1)         # relaxation
-        bc2 = Jh2.T @ (bc1 - funAx_c1(uc1)) @ Jh2                  # fine to coarse
+        bc2 = Jh2_f2c @ (bc1 - funAx_c1(uc1)) @ Jh2_f2c.T          # fine to coarse
 
         uc2 = 0*bc2
         uc2 = fdm_2d_solve(bc2, SRxc2, SRyc2, dcinv2, Rmaskc2)          # coarse solve
 
-        uc1 = uc1 + Jh2 @ uc2 @ Jh2.T                              # coarse to fine
+        uc1 = uc1 + Jh2_c2f @ uc2 @ Jh2_c2f.T                      # coarse to fine
         uc1 = relax(funAx_c1,uc1,bc1,msmth,**relaxData_c1)         # relaxation
 
-        uf  = uf + Jh1 @ uc1 @ Jh1.T                          # coarse to fine
+        uf  = uf + Jh1_c2f @ uc1 @ Jh1_c2f.T                  # coarse to fine
         uf  = relax(funAx_f,uf,bf,msmth,**relaxData_f)        # relaxation
 
         res = hnorm(bf - funAx_f(uf), Bxy)

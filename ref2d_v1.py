@@ -6,12 +6,14 @@ from my_sem.gen_semhat import semhat
 from my_sem.gen_geom import geometric_factors_2d
 from my_sem.linear_solvers import cg, pcg
 from my_sem.preconditioners import (
-   precon_mass_setup,
-   precon_mass,
-   precon_jac_setup,
-   precon_jac,
-   precon_fdm_2d_setup,
-   precon_fdm_2d
+    precon_mass_setup,
+    precon_mass,
+    precon_jac_setup,
+    precon_jac,
+    precon_fdm_2d_setup,
+    precon_fdm_2d,
+    precon_chebyshev_setup,
+    precon_chebyshev
 )
 from my_sem.util import tic, toc, norm_linf
 
@@ -57,7 +59,8 @@ def fun_u_exact(x,y):
 # Boundary condition 
 def set_mask2d(N): # TODO: add input to control dffernet BC
     I = np.identity(N+1, dtype=np.float64)
-    Rx = I[1:, :]   # X: Dirichlet - homogeneuous Neumann
+#    Rx = I[1:, :]  # X: Dirichlet - homogeneuous Neumann
+    Rx = I[1:-1, :] # X: Dirichlet - Dirichlet
     Ry = I[1:-1, :] # Y: Dirichlet - Dirichlet
     Rmask = np.dot( Ry.T@Ry, np.dot(np.ones((n,n)), (Rx.T@Rx).T) )
     return Rx,Ry,Rmask
@@ -68,6 +71,7 @@ results={}
 results['cg']   = np.empty((0,4)) # N, niter, err, time
 results['jac']  = np.empty((0,4)) # N, niter, err, time
 results['mass'] = np.empty((0,4)) # N, niter, err, time
+results['cheb'] = np.empty((0,4)) # N, niter, err, time
 results['fdm']  = np.empty((0,4)) # N, niter, err, time
 
 for N in range(3, 23):
@@ -139,6 +143,11 @@ for N in range(3, 23):
 
     precon_fdm_2d_setup(Bh, Dh, Rx, Ry, Rmask) 
 
+    # TODO: fit chebyshev parameters
+    cheb_smoother = precon_jac # jacobi-chebyshev
+    k_iter = 3
+    precon_chebyshev_setup(Ax_2d, cheb_smoother, X.shape, k_iter, lmin=0.1, lmax=1.2)
+
 
     # Main solves
     tol = 1e-8
@@ -156,6 +165,10 @@ for N in range(3, 23):
     U, niter, err, t_elapsed = solve_pcg(Ax_2d,precon_jac,tol,maxit)
     results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
 
+    tag = 'cheb'
+    U, niter, err, t_elapsed = solve_pcg(Ax_2d,precon_chebyshev,tol,maxit)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+
     tag = 'fdm'
     U, niter, err, t_elapsed = solve_pcg(Ax_2d,precon_fdm_2d,tol,maxit)
     results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
@@ -167,6 +180,7 @@ ax = plt.figure().gca()
 plt.semilogy(results['cg']  [:,0], results['cg']  [:,3], "-o", label="cg")
 plt.semilogy(results['mass'][:,0], results['mass'][:,3], "-o", label="pcg(mass)")
 plt.semilogy(results['jac'] [:,0], results['jac'] [:,3], "-o", label="pcg(jacobi)")
+plt.semilogy(results['cheb'][:,0], results['cheb'][:,3], "-o", label="pcg(chebyshev+jacobi)")
 plt.semilogy(results['fdm'] [:,0], results['fdm'] [:,3], "-o", label="pcg(fdm)")
 plt.title("tol="+str(tol), fontsize=20); plt.legend(loc=0)
 plt.xlim(1, N + 1); ax.xaxis.set_major_locator(MaxNLocator(integer=True))
@@ -178,6 +192,7 @@ ax = plt.figure().gca()
 plt.semilogy(results['cg']  [:,0], results['cg']  [:,1], "-o", label="cg")
 plt.semilogy(results['mass'][:,0], results['mass'][:,1], "-o", label="pcg(mass)")
 plt.semilogy(results['jac'] [:,0], results['jac'] [:,1], "-o", label="pcg(jacobi)")
+plt.semilogy(results['cheb'][:,0], results['cheb'][:,1], "-o", label="pcg(chebyshev+jacobi)")
 plt.semilogy(results['fdm'] [:,0], results['fdm'] [:,1], "-o", label="pcg(fdm)")
 plt.title("tol="+str(tol), fontsize=20); plt.legend(loc=0)
 plt.xlim(2, N + 1); ax.xaxis.set_major_locator(MaxNLocator(integer=True))
@@ -189,6 +204,7 @@ ax = plt.figure().gca()
 plt.semilogy(results['cg']  [:,0], results['cg']  [:,2], "-o", label="cg")
 plt.semilogy(results['mass'][:,0], results['mass'][:,2], "-o", label="pcg(mass)")
 plt.semilogy(results['jac'] [:,0], results['jac'] [:,2], "-o", label="pcg(jacobi)")
+plt.semilogy(results['cheb'][:,0], results['cheb'][:,2], "-o", label="pcg(chebyshev+jacobi)")
 plt.semilogy(results['fdm'] [:,0], results['fdm'] [:,2], "-o", label="pcg(fdm)")
 plt.title("tol="+str(tol), fontsize=20); plt.legend(loc=0)
 plt.xlim(2, N + 1); ax.xaxis.set_major_locator(MaxNLocator(integer=True))
