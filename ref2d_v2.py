@@ -18,7 +18,7 @@ from my_sem.preconditioners import (
     precon_chebyshev
 )
 from my_sem.util import tic, toc, norm_linf
-from my_sem.multigrid import twolevels
+from my_sem.multigrid import twolevels, threelevels
 
 from sempy.meshes.box import reference_2d
 
@@ -77,8 +77,14 @@ results['mass'] = np.empty((0,4)) # N, niter, err, time
 results['fdm']  = np.empty((0,4)) # N, niter, err, time
 results['cheb1']= np.empty((0,4)) # N, niter, err, time
 #results['cheb2']= np.empty((0,4)) # N, niter, err, time
-results['mg1']  = np.empty((0,4)) # N, niter, err, time
-results['mg2']  = np.empty((0,4)) # N, niter, err, time
+results['mg2j0']  = np.empty((0,4)) # N, niter, err, time
+results['mg2j1']  = np.empty((0,4)) # N, niter, err, time
+results['mg2c0']  = np.empty((0,4)) # N, niter, err, time
+results['mg2c1']  = np.empty((0,4)) # N, niter, err, time
+results['mg3j0']  = np.empty((0,4)) # N, niter, err, time
+results['mg3j1']  = np.empty((0,4)) # N, niter, err, time
+results['mg3c0']  = np.empty((0,4)) # N, niter, err, time
+results['mg3c1']  = np.empty((0,4)) # N, niter, err, time
 
 for N in range(3, 23):
     n = N + 1; nn = n * n
@@ -93,7 +99,7 @@ for N in range(3, 23):
     G, J, B = geometric_factors_2d(X, Y, w, Dh, n)
     Rx, Ry, Rmask = set_mask2d(N)
 
-    def Ax_2d(U): 
+    def Ax_2d(U): # remove this later...
 
         Ux = U @ Dh.T
         Uy = Dh @ U
@@ -142,24 +148,40 @@ for N in range(3, 23):
       return U, niter, err, t_elapsed
 
 
-    def relax_jacobi(funAx, u0, f, msteps):
+    def relax_jacobi_setup(funAx,shape): # TODO: need a class...
+
+        omega = 2.0/3.0 # relaxtion
+        Dinv = precon_jac_setup(funAx, shape, omega)
+
+        relax_data = {"__Dinv" : Dinv, "__omega" : omega}
+        return relax_data
+
+    def relax_jacobi(funAx, u0, f, msteps, __Dinv, __omega):
+        ''' 
+        Usage: 
+          relax_data = relax_setup(funAx,shape)
+          relax(funAx, u0, f, msteps,**relax_data)
+        '''
         u = u0.copy()
-        omega = 2.0 / 3.0
         for step in range(msteps):
-            u += omega * mul(Dinv,(f - funAx(u)))
+            u += __omega * mul(__Dinv,(f - funAx(u)))
         return u
 
-    icalld = 0
-    def relax_cheb_jacobi(funAx, u0, f, msteps):
-        global icalld,Dinv,__lmin,__lmax
+    def relax_cheb_jacobi_setup(funAx,shape):
+        def dummy(): 
+            return
         omega = 2.0/3.0 # relaxtion
+        Dinv = precon_jac_setup(funAx, shape, omega)
+        cheb_smoother = dummy
+        lmin,lmax=precon_chebyshev_setup(funAx, cheb_smoother, shape
+                                        ,0, lmin=0.1, lmax=1.2)
+
+        relax_data = {"__lmin" : lmin, "__lmax" : lmax
+                     ,"__Dinv" : Dinv, "__omega" : omega}
+        return relax_data
+
+    def relax_cheb_jacobi(funAx, u0, f, msteps, __lmin,__lmax,__Dinv,__omega):
         k_iter = msteps # cheb degree
-        if icalld ==0: #TODO
-            Dinv = precon_jac_setup(Ax_2d, X, omega)
-            cheb_smoother = precon_jac # jacobi-chebyshev
-            __lmin,__lmax=precon_chebyshev_setup(funAx, cheb_smoother, u0.shape
-                                                ,k_iter, lmin=0.1, lmax=1.2)
-            icalld = 1
 
         theta = 0.5*(__lmax + __lmin)
         delta = 0.5*(__lmax - __lmin)
@@ -168,7 +190,7 @@ for N in range(3, 23):
     
         x = u0.copy()
         r = f - funAx(x)
-        r = omega * mul(Dinv,r)
+        r = __omega * mul(__Dinv,r)
        
 #       x = 0*r
         d = 1/theta * r
@@ -176,22 +198,21 @@ for N in range(3, 23):
             rho_prev = rho
     
             x = x + d
-#            r = r - __Sx_cheb(funAx,funAx(d),f)
-            r = r - omega * mul(Dinv,funAx(d))
+            r = r - __omega * mul(__Dinv,funAx(d))
             rho = 1.0 / (2.0*sigma - rho)
             d = rho*rho_prev * d + 2.0*rho / sigma * r
     
         x = x + d
         return x
 
-    def solve_twolevels(funAx,funRelax,tol,maxit):
+    def solve_twolevels(funAx,funRelax,funRelaxSetup,tol,maxit,crsmode=0):
         if maxit<0: # use DOF
             maxit = np.sum(Rmask, dtype=np.int)
         msmth = 2
 
         Nf = N
-        Nc = max(np.int(np.ceil(Nf/2.0)),1)
-        Nc = max(np.int(np.ceil(Nf-2)),2)
+        Nc = max(np.int(np.ceil(Nf/2.0)),2)
+        Nc = max(np.int(np.ceil(Nf-2)),2) # N=2 is the minimum due to the Dirichlet BC, FIXME
 #        print(Nf,Nc)
         vb = 0
 
@@ -200,8 +221,8 @@ for N in range(3, 23):
 
         t0 = tic()
         U, niter, res_list, Ulist = twolevels(funAx,b,set_mask2d
-                           ,funRelax,msmth,Nf,Nc
-                           ,tol=tol,maxit=maxit,x0=None,ivb=vb,idumpu=False)
+                           ,funRelax,funRelaxSetup,msmth,Nf,Nc
+                           ,tol=tol,maxit=maxit,x0=None,ivb=vb,idumpu=False,crsmode=crsmode)
         t_elapsed = toc(t0)
 
         U     = U + Ub
@@ -211,8 +232,41 @@ for N in range(3, 23):
 #       print('mg',N,err,tol)
         return U, niter, err, t_elapsed
 
-    def solve_threelevels(funAx,funRelax,tol,maxit):
-        return
+
+    def solve_threelevels(funAx,funRelax,funRelaxSetup,tol,maxit,crsmode=0,cmode=0):
+        if maxit<0: # use DOF
+            maxit = np.sum(Rmask, dtype=np.int)
+        cmode = np.array(cmode)
+        msmth = 2
+
+        Nf = N
+        if cmode.size==3:
+            Nc1 = no.int(cmode[1])
+            Nc2 = no.int(cmode[2])
+        elif cmode==0:
+            Nc1 = max(np.int(np.ceil(Nf/2.0)),2)
+            Nc2 = max(np.int(np.ceil(Nc1/2.0)),2)
+        elif cmode==1:
+            Nc1 = max(np.int(np.ceil(Nf-2)),2)
+            Nc2 = max(np.int(np.ceil(Nc1-2)),2)
+        print(Nf,Nc1,Nc2)
+        vb = 0
+
+        Ub = mul((1.0-Rmask), fun_u_exact(X,Y)) # Dirichlet BC
+        b  = -mul(Rmask, funAx(Ub))
+
+        t0 = tic()
+        U, niter, res_list, Ulist = threelevels(funAx,b,set_mask2d
+                           ,funRelax,funRelaxSetup,msmth,Nf,Nc1,Nc2
+                           ,tol=tol,maxit=maxit,x0=None,ivb=vb,idumpu=False,crsmode=crsmode)
+        t_elapsed = toc(t0)
+
+        U     = U + Ub
+        U_exa = fun_u_exact(X,Y)
+        err   = norm_linf(U_exa-U)
+
+#       print('mg',N,err,tol)
+        return U, niter, err, t_elapsed
 
 
     # Setup preconditioner (store into module-wise global memory)
@@ -220,7 +274,7 @@ for N in range(3, 23):
     precon_mass_setup(Minv)
 
     omega = 2.0/3.0 # relaxtion
-    Dinv = precon_jac_setup(Ax_2d, X, omega)
+    Dinv = precon_jac_setup(Ax_2d, X.shape, omega)
 
     precon_fdm_2d_setup(Bh, Dh, Rx, Ry, Rmask) 
 
@@ -261,59 +315,73 @@ for N in range(3, 23):
 #    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
 #    print(niter)
 
-    tag = 'mg1' # 2-lv jac
-    U, niter, err, t_elapsed = solve_twolevels(Ax_2d,relax_jacobi,tol,maxit)
+    tag = 'mg2j0' # 2-lv jac, crsmode=0
+    U, niter, err, t_elapsed = solve_twolevels(Ax_2d,relax_jacobi,relax_jacobi_setup
+                                              ,tol,maxit,crsmode=0)
     results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
 
-    tag = 'mg2' # 2-lv jac+cheb
-    U, niter, err, t_elapsed = solve_twolevels(Ax_2d,relax_cheb_jacobi,tol,maxit)
+    tag = 'mg2j1' # 2-lv jac, crsmode=1
+    U, niter, err, t_elapsed = solve_twolevels(Ax_2d,relax_jacobi,relax_jacobi_setup
+                                              ,tol,maxit,crsmode=1)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+
+    tag = 'mg2c0' # 2-lv jac+cheb, crsmode=0
+    U, niter, err, t_elapsed = solve_twolevels(Ax_2d,relax_cheb_jacobi,relax_cheb_jacobi_setup
+                                              ,tol,maxit,crsmode=0)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+
+    tag = 'mg2c1' # 2-lv jac+cheb, crsmode=1
+    U, niter, err, t_elapsed = solve_twolevels(Ax_2d,relax_cheb_jacobi,relax_cheb_jacobi_setup
+                                              ,tol,maxit,crsmode=1)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+
+    tag = 'mg3j0' # 2-lv jac, crsmode=0
+    U, niter, err, t_elapsed = solve_threelevels(Ax_2d,relax_jacobi,relax_jacobi_setup
+                                                ,tol,maxit,crsmode=0)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+
+    tag = 'mg3j1' # 3-lv jac, crsmode=1
+    U, niter, err, t_elapsed = solve_threelevels(Ax_2d,relax_jacobi,relax_jacobi_setup
+                                                ,tol,maxit,crsmode=1)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+
+    tag = 'mg3j0' # 2-lv jac, crsmode=0
+    U, niter, err, t_elapsed = solve_threelevels(Ax_2d,relax_jacobi,relax_jacobi_setup
+                                                ,tol,maxit,crsmode=0)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+
+    tag = 'mg3j1' # 3-lv jac, crsmode=1
+    U, niter, err, t_elapsed = solve_threelevels(Ax_2d,relax_jacobi,relax_jacobi_setup
+                                                ,tol,maxit,crsmode=1)
     results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
 
 ## plots and saves
-ax = plt.figure().gca()
-plt.semilogy(results['cg']   [:,0], results['cg']   [:,3], "-o", label="cg")
-plt.semilogy(results['mass'] [:,0], results['mass'] [:,3], "-o", label="pcg(mass)")
-plt.semilogy(results['jac']  [:,0], results['jac']  [:,3], "-o", label="pcg(jacobi)")
-plt.semilogy(results['fdm']  [:,0], results['fdm']  [:,3], "-o", label="pcg(fdm)")
-plt.semilogy(results['cheb1'][:,0], results['cheb1'][:,3], "-o", label="pcg(cheb-jac)")
-#plt.semilogy(results['cheb2'][:,0], results['cheb2'][:,3], "-o", label="pcg(cheb-mass)")
-plt.semilogy(results['mg1']  [:,0], results['mg1']  [:,3], "-o", label="twolevels(jac)")
-plt.semilogy(results['mg2']  [:,0], results['mg2']  [:,3], "-o", label="twolevels(cheb-jac)")
-plt.title("tol="+str(tol), fontsize=20); plt.legend(loc=0)
-plt.xlim(1, N + 1); ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-plt.xlabel("N - order", fontsize=16); plt.ylabel("Elapsed Time (s)", fontsize=16)
-if(ifsave):
-    plt.savefig("elapsed_pcg.pdf", bbox_inches="tight")
+def plot_aux(results,idx,stry,ifsave,strf):
+    ax = plt.figure().gca()
+    plt.semilogy(results['cg']   [:,0], results['cg']   [:,idx],"-o", label="cg")
+    plt.semilogy(results['mass'] [:,0], results['mass'] [:,idx],"-o", label="pcg(mass)")
+    plt.semilogy(results['jac']  [:,0], results['jac']  [:,idx],"-o", label="pcg(jacobi)")
+    plt.semilogy(results['fdm']  [:,0], results['fdm']  [:,idx],"-o", label="pcg(fdm)")
+    plt.semilogy(results['cheb1'][:,0], results['cheb1'][:,idx],"-o", label="pcg(cheb-jac)")
+#   plt.semilogy(results['cheb2'][:,0], results['cheb2'][:,idx],"-o", label="pcg(cheb-mass)")
+    plt.semilogy(results['mg2j0'][:,0], results['mg2j0'][:,idx],"-o", label="2-lv(jac0)")
+    plt.semilogy(results['mg2j1'][:,0], results['mg2j1'][:,idx],"-o", label="2-lv(jac1)")
+    plt.semilogy(results['mg2c0'][:,0], results['mg2c0'][:,idx],"-o", label="2-lv(cheb-jac0)")
+    plt.semilogy(results['mg2c1'][:,0], results['mg2c1'][:,idx],"-o", label="2-lv(cheb-jac1)")
+    plt.semilogy(results['mg3j0'][:,0], results['mg3j0'][:,idx],"-o", label="3-lv(jac0)")
+    plt.semilogy(results['mg3j1'][:,0], results['mg3j1'][:,idx],"-o", label="3-lv(jac1)")
+    plt.semilogy(results['mg3c0'][:,0], results['mg3c0'][:,idx],"-o", label="3-lv(cheb-jac0)")
+    plt.semilogy(results['mg3c1'][:,0], results['mg3c1'][:,idx],"-o", label="3-lv(cheb-jac1)")
+    plt.title("tol="+str(tol), fontsize=20); plt.legend(loc=0)
+    plt.xlim(1, N + 1); ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    plt.xlabel("N - order", fontsize=16); plt.ylabel(stry, fontsize=16)
+    if(ifsave):
+        plt.savefig(strf, bbox_inches="tight")
 
-ax = plt.figure().gca()
-plt.semilogy(results['cg']   [:,0], results['cg']   [:,1], "-o", label="cg")
-plt.semilogy(results['mass'] [:,0], results['mass'] [:,1], "-o", label="pcg(mass)")
-plt.semilogy(results['jac']  [:,0], results['jac']  [:,1], "-o", label="pcg(jacobi)")
-plt.semilogy(results['fdm']  [:,0], results['fdm']  [:,1], "-o", label="pcg(fdm)")
-plt.semilogy(results['cheb1'][:,0], results['cheb1'][:,1], "-o", label="pcg(cheb-jac)")
-#plt.semilogy(results['cheb2'][:,0], results['cheb2'][:,1], "-o", label="pcg(cheb-mass)")
-plt.semilogy(results['mg1']  [:,0], results['mg1']  [:,1], "-o", label="twolevels(jac)")
-plt.semilogy(results['mg2']  [:,0], results['mg2']  [:,1], "-o", label="twolevels(cheb-jac)")
-plt.title("tol="+str(tol), fontsize=20); plt.legend(loc=0)
-plt.xlim(2, N + 1); ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-plt.xlabel("N - order", fontsize=16); plt.ylabel("# iterations", fontsize=16)
-if(ifsave):
-    plt.savefig("niter_pcg.pdf", bbox_inches="tight")
+plot_aux(results,3,"Elapsed Time (s)",ifsave,"elapsed_pcg.pdf")
+plot_aux(results,1,"# iterations",ifsave,"niter_pcg.pdf")
+plot_aux(results,2,"max. abs. error",ifsave,"err_pcg.pdf")
 
-ax = plt.figure().gca()
-plt.semilogy(results['cg']   [:,0], results['cg']   [:,2], "-o", label="cg")
-plt.semilogy(results['mass'] [:,0], results['mass'] [:,2], "-o", label="pcg(mass)")
-plt.semilogy(results['jac']  [:,0], results['jac']  [:,2], "-o", label="pcg(jacobi)")
-plt.semilogy(results['fdm']  [:,0], results['fdm']  [:,2], "-o", label="pcg(fdm)")
-plt.semilogy(results['cheb1'][:,0], results['cheb1'][:,2], "-o", label="pcg(cheb-jac)")
-#plt.semilogy(results['cheb2'][:,0], results['cheb2'][:,2], "-o", label="pcg(cheb-mass)")
-plt.semilogy(results['mg1']  [:,0], results['mg1']  [:,2], "-o", label="twolevels(jac)")
-plt.semilogy(results['mg2']  [:,0], results['mg2']  [:,2], "-o", label="twolevels(cheb-jac)")
-plt.title("tol="+str(tol), fontsize=20); plt.legend(loc=0)
-plt.xlim(2, N + 1); ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-plt.xlabel("N - order", fontsize=16); plt.ylabel("max. abs. error", fontsize=16)
-if(ifsave):
-    plt.savefig("err_pcg.pdf", bbox_inches="tight")
 
 fig = plt.figure(); ax = plt.axes(projection='3d')
 ax.plot_surface(X, Y, U)
@@ -321,6 +389,7 @@ plt.title("Solution profile", fontsize=20)
 plt.xlabel(r'X', fontsize=16); plt.ylabel(r'Y', fontsize=16)
 if(ifsave):
     plt.savefig("solution_surf.pdf", bbox_inches="tight")
+
 
 
 if plot_on:

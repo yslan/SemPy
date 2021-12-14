@@ -39,10 +39,10 @@ def precon_mass(r):
     return mul(__Minv, r)
 
 
-def precon_jac_setup(funAx, x, omega): # fetch diaginal of matrix A
+def precon_jac_setup(funAx, shape, omega): # fetch diaginal of matrix A
 # TODO: build diagonal directly without loops
     global __omega, __Dinv
-    n, m = x.shape
+    n = shape[0]; m = shape[1]
     DD = np.zeros((m,n))
     for j in range(m):
       for i in range(n):

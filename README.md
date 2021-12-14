@@ -15,7 +15,9 @@ https://github.com/SealUofI/SemPy
 
 - `ref2d_v2.py`: for multigrid
    - add chebyshev smooth
-   - vcycle (TODO)
+   - 2 levels vcycle 
+   - 3 levels vcycle 
+   - TODO: flaxible pre/post smoothing 
 
 
 ### dev notes:

@@ -135,7 +135,7 @@ for N in range(3, 23):
     precon_mass_setup(Minv)
 
     omega = 2.0/3.0 # relaxtion
-    precon_jac_setup(Ax_2d, X, omega)
+    precon_jac_setup(Ax_2d, X.shape, omega)
 
     precon_fdm_2d_setup(Bh, Dh, Rx, Ry, Rmask) 
 
