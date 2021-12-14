@@ -6,6 +6,7 @@ from sempy.meshes.box import reference_2d
 from my_sem.gen_semhat import semhat, gauss_lobatto
 from my_sem.interp1d import interp_mat
 from my_sem.gen_geom import geometric_factors_2d
+from my_sem.util import tic,toc
 
 def fun_MG_Ax(U,Dh,G,Rmask):
 
@@ -122,7 +123,8 @@ def twolevels(funAx,b,set_mask2d,relax,relaxSetup
     funAx = funAx_interface_f
 
     relaxData = relaxSetup(funAx,X.shape)
-   
+
+    timer0 = tic()
 
     if x0 is None:
         x = 0 * b
@@ -155,7 +157,9 @@ def twolevels(funAx,b,set_mask2d,relax,relaxSetup
         if(idumpu): ulist.append(x)
         if(ivb==1): print("res[%d] = %g"%(niter,res_list[-1]))
 
-    return x,niter,res_list,ulist
+    timer1 = toc(timer0)
+
+    return x,niter,res_list,ulist,timer1
 
 
 def threelevels(funAx,b,set_mask2d,relax,relaxSetup
@@ -229,6 +233,8 @@ def threelevels(funAx,b,set_mask2d,relax,relaxSetup
     relaxData_c1 = relaxSetup(funAx_c1,(Nc1+1,Nc1+1))
     relaxData_c2 = relaxSetup(funAx_c2,(Nc2+1,Nc2+1))
 
+    timer0 = tic() # exclude setup time
+
     if x0 is None:
         x = 0 * b
         res = hnorm(b, Bxy)
@@ -270,8 +276,9 @@ def threelevels(funAx,b,set_mask2d,relax,relaxSetup
         if(idumpu): ulist.append(uf)
         if(ivb==1): print("res[%d] = %g"%(niter,res_list[-1]))
     
+    timer1 = toc(timer0)
 
-    return uf,niter,res_list,ulist
+    return uf,niter,res_list,ulist,timer1
 
 
 

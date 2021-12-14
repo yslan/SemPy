@@ -71,20 +71,20 @@ def set_mask2d(N): # TODO: add input to control dffernet BC
 
 ## Conv. test
 results={}
-results['cg']   = np.empty((0,4)) # N, niter, err, time
-results['jac']  = np.empty((0,4)) # N, niter, err, time
-results['mass'] = np.empty((0,4)) # N, niter, err, time
-results['fdm']  = np.empty((0,4)) # N, niter, err, time
-results['cheb1']= np.empty((0,4)) # N, niter, err, time
-#results['cheb2']= np.empty((0,4)) # N, niter, err, time
-results['mg2j0']  = np.empty((0,4)) # N, niter, err, time
-results['mg2j1']  = np.empty((0,4)) # N, niter, err, time
-results['mg2c0']  = np.empty((0,4)) # N, niter, err, time
-results['mg2c1']  = np.empty((0,4)) # N, niter, err, time
-results['mg3j0']  = np.empty((0,4)) # N, niter, err, time
-results['mg3j1']  = np.empty((0,4)) # N, niter, err, time
-results['mg3c0']  = np.empty((0,4)) # N, niter, err, time
-results['mg3c1']  = np.empty((0,4)) # N, niter, err, time
+results['cg']     = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
+results['jac']    = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
+results['mass']   = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
+results['fdm']    = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
+results['cheb1']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
+#results['cheb2'] = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
+results['mg2j0']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
+results['mg2j1']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
+results['mg2c0']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
+results['mg2c1']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
+results['mg3j0']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
+results['mg3j1']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
+results['mg3c0']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
+results['mg3c1']  = np.empty((0,5)) # N, niter, err, t_solve, t_elapsed
 
 for N in range(3, 23):
     n = N + 1; nn = n * n
@@ -220,7 +220,7 @@ for N in range(3, 23):
         b  = -mul(Rmask, funAx(Ub))
 
         t0 = tic()
-        U, niter, res_list, Ulist = twolevels(funAx,b,set_mask2d
+        U, niter, res_list, Ulist, t_solve = twolevels(funAx,b,set_mask2d
                            ,funRelax,funRelaxSetup,msmth,Nf,Nc
                            ,tol=tol,maxit=maxit,x0=None,ivb=vb,idumpu=False,crsmode=crsmode)
         t_elapsed = toc(t0)
@@ -230,7 +230,7 @@ for N in range(3, 23):
         err   = norm_linf(U_exa-U)
 
 #       print('mg',N,err,tol)
-        return U, niter, err, t_elapsed
+        return U, niter, err, t_solve, t_elapsed
 
 
     def solve_threelevels(funAx,funRelax,funRelaxSetup,tol,maxit,crsmode=0,cmode=0):
@@ -256,7 +256,7 @@ for N in range(3, 23):
         b  = -mul(Rmask, funAx(Ub))
 
         t0 = tic()
-        U, niter, res_list, Ulist = threelevels(funAx,b,set_mask2d
+        U, niter, res_list, Ulist, t_solve = threelevels(funAx,b,set_mask2d
                            ,funRelax,funRelaxSetup,msmth,Nf,Nc1,Nc2
                            ,tol=tol,maxit=maxit,x0=None,ivb=vb,idumpu=False,crsmode=crsmode)
         t_elapsed = toc(t0)
@@ -266,7 +266,7 @@ for N in range(3, 23):
         err   = norm_linf(U_exa-U)
 
 #       print('mg',N,err,tol)
-        return U, niter, err, t_elapsed
+        return U, niter, err, t_solve, t_elapsed
 
 
     # Setup preconditioner (store into module-wise global memory)
@@ -289,23 +289,23 @@ for N in range(3, 23):
 
     tag = 'cg'
     U, niter, err, t_elapsed = solve_cg(Ax_2d,tol,maxit)
-    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed, t_elapsed]], axis=0)
 
     tag = 'mass'
     U, niter, err, t_elapsed = solve_pcg(Ax_2d,precon_mass,tol,maxit)
-    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed, t_elapsed]], axis=0)
 
     tag = 'jac'
     U, niter, err, t_elapsed = solve_pcg(Ax_2d,precon_jac,tol,maxit)
-    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed, t_elapsed]], axis=0)
 
     tag = 'fdm'
     U, niter, err, t_elapsed = solve_pcg(Ax_2d,precon_fdm_2d,tol,maxit)
-    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed, t_elapsed]], axis=0)
 
     tag = 'cheb1' # cheb + jac
     U, niter, err, t_elapsed = solve_pcg(Ax_2d,precon_chebyshev,tol,maxit)
-    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed, t_elapsed]], axis=0)
 
 #    tag = 'cheb2' # cheb + mass lmax unbdd
 #    cheb_smoother = precon_mass 
@@ -316,44 +316,44 @@ for N in range(3, 23):
 #    print(niter)
 
     tag = 'mg2j0' # 2-lv jac, crsmode=0
-    U, niter, err, t_elapsed = solve_twolevels(Ax_2d,relax_jacobi,relax_jacobi_setup
+    U, niter, err, t_solve, t_elapsed = solve_twolevels(Ax_2d,relax_jacobi,relax_jacobi_setup
                                               ,tol,maxit,crsmode=0)
-    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_solve, t_elapsed]], axis=0)
 
     tag = 'mg2j1' # 2-lv jac, crsmode=1
-    U, niter, err, t_elapsed = solve_twolevels(Ax_2d,relax_jacobi,relax_jacobi_setup
+    U, niter, err, tsolve, t_elapsed = solve_twolevels(Ax_2d,relax_jacobi,relax_jacobi_setup
                                               ,tol,maxit,crsmode=1)
-    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_solve, t_elapsed]], axis=0)
 
     tag = 'mg2c0' # 2-lv jac+cheb, crsmode=0
-    U, niter, err, t_elapsed = solve_twolevels(Ax_2d,relax_cheb_jacobi,relax_cheb_jacobi_setup
+    U, niter, err, tsolve, t_elapsed = solve_twolevels(Ax_2d,relax_cheb_jacobi,relax_cheb_jacobi_setup
                                               ,tol,maxit,crsmode=0)
-    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_solve, t_elapsed]], axis=0)
 
     tag = 'mg2c1' # 2-lv jac+cheb, crsmode=1
-    U, niter, err, t_elapsed = solve_twolevels(Ax_2d,relax_cheb_jacobi,relax_cheb_jacobi_setup
+    U, niter, err, tsolve, t_elapsed = solve_twolevels(Ax_2d,relax_cheb_jacobi,relax_cheb_jacobi_setup
                                               ,tol,maxit,crsmode=1)
-    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_solve, t_elapsed]], axis=0)
 
     tag = 'mg3j0' # 2-lv jac, crsmode=0
-    U, niter, err, t_elapsed = solve_threelevels(Ax_2d,relax_jacobi,relax_jacobi_setup
+    U, niter, err, tsolve, t_elapsed = solve_threelevels(Ax_2d,relax_jacobi,relax_jacobi_setup
                                                 ,tol,maxit,crsmode=0)
-    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_solve, t_elapsed]], axis=0)
 
     tag = 'mg3j1' # 3-lv jac, crsmode=1
-    U, niter, err, t_elapsed = solve_threelevels(Ax_2d,relax_jacobi,relax_jacobi_setup
+    U, niter, err, tsolve, t_elapsed = solve_threelevels(Ax_2d,relax_jacobi,relax_jacobi_setup
                                                 ,tol,maxit,crsmode=1)
-    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_solve, t_elapsed]], axis=0)
 
     tag = 'mg3j0' # 2-lv jac, crsmode=0
-    U, niter, err, t_elapsed = solve_threelevels(Ax_2d,relax_jacobi,relax_jacobi_setup
+    U, niter, err, tsolve, t_elapsed = solve_threelevels(Ax_2d,relax_jacobi,relax_jacobi_setup
                                                 ,tol,maxit,crsmode=0)
-    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_solve, t_elapsed]], axis=0)
 
     tag = 'mg3j1' # 3-lv jac, crsmode=1
-    U, niter, err, t_elapsed = solve_threelevels(Ax_2d,relax_jacobi,relax_jacobi_setup
+    U, niter, err, tsolve, t_elapsed = solve_threelevels(Ax_2d,relax_jacobi,relax_jacobi_setup
                                                 ,tol,maxit,crsmode=1)
-    results[tag] = np.append(results[tag], [[N, niter, err, t_elapsed]], axis=0)
+    results[tag] = np.append(results[tag], [[N, niter, err, t_solve, t_elapsed]], axis=0)
 
 ## plots and saves
 def plot_aux(results,idx,stry,ifsave,strf):
