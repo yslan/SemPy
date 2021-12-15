@@ -18,4 +18,4 @@ def toc(t0=None):
     t1 = time.process_time() # stop timer first
     if t0 is None:
       t0 = __tprev
-    return time.process_time() - t0
+    return t1 - t0

@@ -59,8 +59,8 @@ def fun_u_exact(x,y):
 # Boundary condition 
 def set_mask2d(N): # TODO: add input to control dffernet BC
     I = np.identity(N+1, dtype=np.float64)
-#    Rx = I[1:, :]  # X: Dirichlet - homogeneuous Neumann
-    Rx = I[1:-1, :] # X: Dirichlet - Dirichlet
+    Rx = I[1:, :]  # X: Dirichlet - homogeneuous Neumann
+#    Rx = I[1:-1, :] # X: Dirichlet - Dirichlet
     Ry = I[1:-1, :] # Y: Dirichlet - Dirichlet
     Rmask = np.dot( Ry.T@Ry, np.dot(np.ones((n,n)), (Rx.T@Rx).T) )
     return Rx,Ry,Rmask

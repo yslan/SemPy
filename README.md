@@ -7,17 +7,27 @@ We do re-write 80%+ of the code and put it under the folder `my_sem/`
 The main driver are listed below:
 
 ### drivers:
-- `example_fix.py`: minimum efforts to make the example runnable.
-   only do up to (single) non-deformed element, but the main operators consoder deformed geometry
+- `example_fix.py`: minimum efforts to make the example runnable.    
+   only do up to (single) non-deformed element, but the main operators consoder deformed geometry     
+   This one still fully depends on `sempy/`   
 
-- `ref2d_v1.py`: clean up, revisit all functions, start to use mine version under (`my_sem/`)
-   - D-N BCs, E=1, non-deformed
+- `ref2d_v1.py`: baseline with PCG  
+   - clean up, revisit all functions, start to use mine version under (`my_sem/`)
+   - D-D / D-N BCs, E=1, non-deformed
    - cg, pcg (mass, jacobi, fdm, chebyshev+jac)
 
-- `ref2d_v2.py`: for multigrid
+- `ref2d_v2.py`: test bed for multigrid      
    - 2 levels vcycle 
    - 3 levels vcycle 
    - TODO: flexible pre/post smoothing 
+   - TODO: use MG as preconditioner in PCG
+
+- `ref2d_v2_mg2runs.py`    
+   - Run lots of 2levels cases + plot figures (take some time)
+
+- `ref2d_v2_mg3runs.py`    
+   - Run lots of 3levels cases + plot figures (take some time)
+
 
 ### modules and functions
 
